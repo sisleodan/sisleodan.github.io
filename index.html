@@ -20,6 +20,7 @@
     --danger:#B3432B;
     --danger-soft:#F8E7E1;
     --border:#E1DED2;
+    --ghost:#fff;
     --radius:10px;
     --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
     --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -71,8 +72,8 @@
   .btn.secondary:hover{background:var(--primary-soft);}
   .btn.danger{background:var(--danger);}
   .btn.danger:hover{background:#8f341f;}
-  .btn.ghost{background:transparent; color:var(--ink-soft); border:1px solid var(--border);}
-  .btn.small{padding:6px 12px; font-size:13px; width:auto;}
+  .btn.ghost{background:var(--ghost); color:var(--ink-soft); border:1px solid var(--border);}
+  .btn.small{padding:6px 18px; font-size:13px; width:auto;}
   .error-msg{background:var(--danger-soft); color:var(--danger); padding:9px 12px; border-radius:8px; font-size:13px; margin-bottom:14px;}
   .link-btn{background:none; border:none; color:var(--primary); font-size:13px; text-decoration:underline; padding:0;}
 
@@ -786,7 +787,7 @@ function modalVenda(){
             ${produtos.map(p=>`<option value="${p.id}">${p.nome} — ${fmtMoney(p.preco)} (estoque: ${p.estoque})</option>`).join('')}
           </select>
           <input type="number" id="v-qtd" min="1" step="1" value="1" style="flex:1; padding:10px; border:1px solid var(--border); border-radius:8px;">
-          <button type="button" class="btn small" id="btn-add-item">Add</button>
+          <button type="button" class="btn small" id="btn-add-item">+</button>
         </div>
       </div>
       <div id="cart-list">
