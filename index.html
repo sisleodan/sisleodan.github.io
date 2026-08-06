@@ -187,6 +187,7 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function fmtMoney(v){ return (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
 function fmtDate(iso){ const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
 function simpleHash(s){ let h=0; for(let i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))>>>0;} return h.toString(36); }
+function vendaLucro(v){ return v.lucro!=null ? v.lucro : v.itens.reduce((s,i)=>s+i.qtd*(i.precoUnit-(i.custoUnit||0)),0); }
 
 /* ============ ESTADO EM MEMÓRIA ============ */
 let state = {
@@ -318,6 +319,7 @@ function viewDashboard(){
   const produtos = DB.getProdutos();
   const clientes = DB.getClientes();
   const totalVendido = clientes.reduce((s,c)=>s+c.historico.reduce((s2,v)=>s2+v.total,0),0);
+  const totalLucro = clientes.reduce((s,c)=>s+c.historico.reduce((s2,v)=>s2+vendaLucro(v),0),0);
   const qtdVendas = clientes.reduce((s,c)=>s+c.historico.length,0);
   const baixoEstoque = produtos.filter(p=>p.estoque<=5).length;
   return `
@@ -328,9 +330,15 @@ function viewDashboard(){
       <div class="stat"><div class="num">${clientes.length}</div><div class="label">Clientes</div></div>
       <div class="stat"><div class="num">${qtdVendas}</div><div class="label">Vendas registradas</div></div>
     </div>
-    <div class="card">
-      <h3>Total vendido</h3>
-      <div style="font-family:var(--font-display); font-size:30px; color:var(--primary-dark); margin-top:6px;">${fmtMoney(totalVendido)}</div>
+    <div class="grid-cards" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+      <div class="card" style="margin:0;">
+        <h3>Total vendido</h3>
+        <div style="font-family:var(--font-display); font-size:30px; color:var(--primary-dark); margin-top:6px;">${fmtMoney(totalVendido)}</div>
+      </div>
+      <div class="card" style="margin:0;">
+        <h3>Lucro total</h3>
+        <div style="font-family:var(--font-display); font-size:30px; color:${totalLucro>=0?'var(--primary-dark)':'var(--danger)'}; margin-top:6px;">${fmtMoney(totalLucro)}</div>
+      </div>
     </div>
   `;
 }
@@ -378,18 +386,24 @@ function viewProdutos(){
     <div class="card table-wrap">
       ${produtos.length===0 ? `<div class="empty">Nenhum produto cadastrado.</div>` : `
       <table>
-        <thead><tr><th>Nome</th><th>Preço</th><th>Estoque</th><th></th></tr></thead>
+        <thead><tr><th>Nome</th><th>Preço venda</th><th>Preço compra</th><th>Lucro un.</th><th>Estoque</th><th></th></tr></thead>
         <tbody>
-        ${produtos.map(p=>`
+        ${produtos.map(p=>{
+          const custo = p.custo||0;
+          const lucro = p.preco-custo;
+          const margem = p.preco>0 ? (lucro/p.preco*100) : 0;
+          return `
           <tr>
             <td>${p.nome}</td>
             <td>${fmtMoney(p.preco)}</td>
+            <td>${fmtMoney(custo)}</td>
+            <td style="color:${lucro>=0?'var(--primary-dark)':'var(--danger)'}; font-weight:600;">${fmtMoney(lucro)}<br><span style="font-weight:400; font-size:11px; color:var(--ink-soft);">${margem.toFixed(0)}%</span></td>
             <td>${estoqueBadge(p.estoque)}</td>
             <td class="row-actions">
               <button class="btn ghost small" data-editar="${p.id}">Editar</button>
               <button class="btn danger small" data-excluir="${p.id}">Excluir</button>
             </td>
-          </tr>`).join('')}
+          </tr>`;}).join('')}
         </tbody>
       </table>`}
     </div>
@@ -503,6 +517,7 @@ function viewRelatorios(){
 
   const totalVendido = vendas.reduce((s,v)=>s+v.total,0);
   const totalPago = vendas.reduce((s,v)=>s+v.pago,0);
+  const totalLucro = vendas.reduce((s,v)=>s+vendaLucro(v),0);
   const ticketMedio = vendas.length ? totalVendido/vendas.length : 0;
 
   const rankProdutos = {};
@@ -538,6 +553,7 @@ function viewRelatorios(){
       <div class="stat"><div class="num">${vendas.length}</div><div class="label">Vendas no período</div></div>
       <div class="stat"><div class="num">${fmtMoney(ticketMedio)}</div><div class="label">Ticket médio</div></div>
       <div class="stat ${totalPago<totalVendido?'warn':''}"><div class="num">${fmtMoney(totalVendido-totalPago)}</div><div class="label">Saldo a receber</div></div>
+      <div class="stat"><div class="num" style="color:${totalLucro>=0?'var(--primary-dark)':'var(--danger)'};">${fmtMoney(totalLucro)}</div><div class="label">Lucro no período</div></div>
     </div>
 
     <div class="card">
@@ -725,7 +741,8 @@ function modalProduto(p){
       <h3>${editando?'Editar produto':'Novo produto'}</h3>
       <form id="form-produto">
         <div class="field"><label>Nome</label><input type="text" id="p-nome" required value="${p.nome||''}"></div>
-        <div class="field"><label>Preço (R$)</label><input type="number" id="p-preco" step="0.01" min="0" required value="${p.preco??''}"></div>
+        <div class="field"><label>Preço de venda (R$)</label><input type="number" id="p-preco" step="0.01" min="0" required value="${p.preco??''}"></div>
+        <div class="field"><label>Preço de compra (R$)</label><input type="number" id="p-custo" step="0.01" min="0" value="${p.custo??''}" placeholder="0,00"></div>
         <div class="field"><label>Estoque ${editando?'atual':'inicial'}</label><input type="number" id="p-estoque" step="1" min="0" required value="${p.estoque??0}"></div>
         <div class="modal-actions">
           <button type="button" class="btn ghost" id="btn-cancelar">Cancelar</button>
@@ -862,12 +879,13 @@ function bindModal(){
       const p = state.modal.payload;
       const nome=document.getElementById('p-nome').value.trim();
       const preco=parseFloat(document.getElementById('p-preco').value);
+      const custo=parseFloat(document.getElementById('p-custo').value)||0;
       const estoque=parseInt(document.getElementById('p-estoque').value,10);
       let produtos = DB.getProdutos();
       if(p.id){
-        produtos = produtos.map(x=>x.id===p.id?{...x, nome, preco, estoque}:x);
+        produtos = produtos.map(x=>x.id===p.id?{...x, nome, preco, custo, estoque}:x);
       }else{
-        produtos.push({id:uid(), nome, preco, estoque});
+        produtos.push({id:uid(), nome, preco, custo, estoque});
       }
       DB.setProdutos(produtos);
       state.modal=null; render();
@@ -917,7 +935,7 @@ function bindModal(){
       if(jaNoCart+qtd > produto.estoque){ alert('Quantidade maior que o estoque disponível.'); return; }
       const existente = state.vendaCart.find(i=>i.produtoId===produtoId);
       if(existente){ existente.qtd += qtd; } else {
-        state.vendaCart.push({produtoId, nome:produto.nome, precoUnit:produto.preco, qtd});
+        state.vendaCart.push({produtoId, nome:produto.nome, precoUnit:produto.preco, custoUnit:produto.custo||0, qtd});
       }
       render();
     });
@@ -933,7 +951,7 @@ function bindModal(){
         produtos = produtos.map(p=>p.id===item.produtoId?{...p, estoque:p.estoque-item.qtd}:p);
       });
       DB.setProdutos(produtos);
-      const venda = {id:uid(), data:new Date().toISOString(), itens:state.vendaCart, total, pago};
+      const venda = {id:uid(), data:new Date().toISOString(), itens:state.vendaCart, total, pago, lucro: state.vendaCart.reduce((s,i)=>s+i.qtd*(i.precoUnit-(i.custoUnit||0)),0)};
       let clientes = DB.getClientes();
       const cliente = clientes.find(c=>c.id===state.vendaClienteId);
       clientes = clientes.map(c=>c.id===state.vendaClienteId?{...c, historico:[...c.historico, venda]}:c);
