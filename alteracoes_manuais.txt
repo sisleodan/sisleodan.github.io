@@ -1,0 +1,32 @@
+---
+
+--primary:#0F6B5C;
+--primary-dark:#0B4F44;
+
+/*--primary:#0F6B5C;*/
+--primary:#1b2cea;
+/*--primary-dark:#0B4F44;*/
+--primary-dark:#3387bb;
+
+---
+
+--border:#E1DED2;
+
+--border:#E1DED2;
+--ghost:#fff;
+
+---
+
+.btn.ghost{background:transparent; color:var(--ink-soft); border:1px solid var(--border);}
+.btn.small{padding:6px 12px; font-size:13px; width:auto;}
+
+.btn.ghost{background:var(--ghost); color:var(--ink-soft); border:1px solid var(--border);}
+.btn.small{padding:6px 18px; font-size:13px; width:auto;}
+
+---
+
+<button type="button" class="btn small" id="btn-add-item">Add</button>
+
+<button type="button" class="btn small" id="btn-add-item">+</button>
+
+---
