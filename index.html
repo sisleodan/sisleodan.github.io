@@ -10,9 +10,7 @@
     --surface:#FFFFFF;
     --ink:#1E2A26;
     --ink-soft:#5B6B64;
-    /*--primary:#0F6B5C;*/
     --primary:#1b2cea;
-    /*--primary-dark:#0B4F44;*/
     --primary-dark:#3387bb;
     --primary-soft:#E4EFEC;
     --amber:#C97A2B;
@@ -372,6 +370,13 @@ function viewConfig(){
         <input type="file" id="input-importar" accept="application/json" style="display:none;">
       </div>
     </div>
+    <div class="card" style="max-width:420px; border-color:var(--danger); background:var(--danger-soft);">
+      <h3 style="color:var(--danger);">Zona de risco</h3>
+      <div class="sub" style="color:var(--ink); font-size:13px; margin-bottom:14px;">
+        Apaga permanentemente todos os dados do sistema: nome do estabelecimento, login, produtos, estoque e clientes com histórico de compras. <strong>Essa ação não pode ser desfeita.</strong> Se quiser guardar os dados antes, use "Exportar dados" acima.
+      </div>
+      <button class="btn danger" id="btn-apagar-tudo" style="width:auto;">Apagar todos os dados</button>
+    </div>
   `;
 }
 
@@ -383,7 +388,7 @@ function viewProdutos(){
     <div class="page-head"><div><h2>Produtos</h2><div class="sub">Cadastro e edição de nome e preço</div></div>
       <button class="btn small" id="btn-novo-produto">+ Novo produto</button>
     </div>
-    <div class="toolbar"><div class="search-box"><input type="text" id="busca-produto" placeholder="Buscar por nome ou código de barras..." value="${state.buscaProduto}"></div></div>
+    <div class="toolbar"><div class="search-box" style="display:flex; gap:8px;"><input type="text" id="busca-produto" placeholder="Buscar por nome ou código de barras..." value="${state.buscaProduto}" style="flex:1;"><button type="button" class="btn secondary small" id="busca-produto-scan" style="width:auto;">📷</button></div></div>
     <div class="card table-wrap">
       ${produtos.length===0 ? `<div class="empty">Nenhum produto cadastrado.</div>` : `
       <table>
@@ -589,6 +594,9 @@ function bindPage(){
     document.getElementById('btn-novo-produto').addEventListener('click', ()=>{ state.modal={type:'produto', payload:{}}; render(); });
     const busca = document.getElementById('busca-produto');
     busca.addEventListener('input', e=>{ state.buscaProduto=e.target.value; render(); document.getElementById('busca-produto').focus(); document.getElementById('busca-produto').selectionStart = document.getElementById('busca-produto').value.length; });
+    document.getElementById('busca-produto-scan').addEventListener('click', ()=>{
+      abrirScanner(codigo=>{ state.buscaProduto = codigo; render(); });
+    });
     document.querySelectorAll('[data-editar]').forEach(b=>b.addEventListener('click', ()=>{
       const p = DB.getProdutos().find(x=>x.id===b.dataset.editar);
       state.modal={type:'produto', payload:p}; render();
@@ -666,6 +674,7 @@ function bindPage(){
       document.getElementById('input-importar').click();
     });
     document.getElementById('input-importar').addEventListener('change', importarDados);
+    document.getElementById('btn-apagar-tudo').addEventListener('click', apagarTudo);
   }
 }
 
@@ -714,6 +723,28 @@ function importarDados(e){
     render();
   };
   reader.readAsText(file);
+}
+
+function apagarTudo(){
+  const confirmou = confirm(
+    'ATENÇÃO: isso vai apagar PERMANENTEMENTE todos os dados do sistema (estabelecimento, login, produtos, estoque e clientes).\n\nOs dados NÃO poderão ser recuperados depois. Deseja continuar?'
+  );
+  if(!confirmou) return;
+  const digitado = prompt('Para confirmar, digite APAGAR (em letras maiúsculas):');
+  if(digitado !== 'APAGAR'){
+    alert('Confirmação incorreta. Nenhum dado foi apagado.');
+    return;
+  }
+  localStorage.removeItem('sv_config');
+  localStorage.removeItem('sv_produtos');
+  localStorage.removeItem('sv_clientes');
+  localStorage.removeItem('sv_movs');
+  state = {
+    logged:false, tab:'dashboard', modal:null, vendaCart:[], vendaClienteId:null,
+    buscaProduto:'', buscaCliente:'', loginErro:'', relatorioDe:'', relatorioAte:''
+  };
+  alert('Todos os dados foram apagados.');
+  render();
 }
 
 /* ============ MODAIS ============ */
@@ -1080,6 +1111,5 @@ function abrirScanner(callback){
 
 render();
 </script>
-<!--a-->
 </body>
 </html>
