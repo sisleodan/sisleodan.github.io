@@ -377,12 +377,13 @@ function viewConfig(){
 
 /* ============ PRODUTOS ============ */
 function viewProdutos(){
-  const produtos = DB.getProdutos().filter(p=>p.nome.toLowerCase().includes(state.buscaProduto.toLowerCase()));
+  const busca = state.buscaProduto.toLowerCase();
+  const produtos = DB.getProdutos().filter(p=>p.nome.toLowerCase().includes(busca) || (p.codigoBarras||'').toLowerCase().includes(busca));
   return `
     <div class="page-head"><div><h2>Produtos</h2><div class="sub">Cadastro e edição de nome e preço</div></div>
       <button class="btn small" id="btn-novo-produto">+ Novo produto</button>
     </div>
-    <div class="toolbar"><div class="search-box"><input type="text" id="busca-produto" placeholder="Buscar produto..." value="${state.buscaProduto}"></div></div>
+    <div class="toolbar"><div class="search-box"><input type="text" id="busca-produto" placeholder="Buscar por nome ou código de barras..." value="${state.buscaProduto}"></div></div>
     <div class="card table-wrap">
       ${produtos.length===0 ? `<div class="empty">Nenhum produto cadastrado.</div>` : `
       <table>
@@ -741,6 +742,13 @@ function modalProduto(p){
       <h3>${editando?'Editar produto':'Novo produto'}</h3>
       <form id="form-produto">
         <div class="field"><label>Nome</label><input type="text" id="p-nome" required value="${p.nome||''}"></div>
+        <div class="field">
+          <label>Código de barras (opcional)</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="p-codigo" value="${p.codigoBarras||''}" placeholder="Digite ou escaneie" style="flex:1;">
+            <button type="button" class="btn secondary small" id="p-scan-btn" style="width:auto;">📷 Escanear</button>
+          </div>
+        </div>
         <div class="field"><label>Preço de venda (R$)</label><input type="number" id="p-preco" step="0.01" min="0" required value="${p.preco??''}"></div>
         <div class="field"><label>Preço de compra (R$)</label><input type="number" id="p-custo" step="0.01" min="0" value="${p.custo??''}" placeholder="0,00"></div>
         <div class="field"><label>Estoque ${editando?'atual':'inicial'}</label><input type="number" id="p-estoque" step="1" min="0" required value="${p.estoque??0}"></div>
@@ -797,7 +805,14 @@ function modalVenda(){
     <div class="modal">
       <h3>Registrar venda · ${cliente?cliente.nome:''}</h3>
       <div class="field">
-        <label>Adicionar produto</label>
+        <label>Ler código de barras</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="v-barcode" placeholder="Digite, escaneie com leitor USB ou use a câmera" style="flex:1;" autofocus>
+          <button type="button" class="btn secondary small" id="v-scan-btn" style="width:auto;">📷</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Ou selecione o produto</label>
         <div style="display:flex; gap:8px;">
           <select id="v-produto" style="flex:2;">
             <option value="">Selecione...</option>
@@ -874,18 +889,25 @@ function bindModal(){
   if(cancelar) cancelar.addEventListener('click', ()=>{ state.modal=null; render(); });
 
   if(state.modal.type==='produto'){
+    document.getElementById('p-scan-btn').addEventListener('click', ()=>{
+      abrirScanner(codigo=>{ document.getElementById('p-codigo').value = codigo; });
+    });
     document.getElementById('form-produto').addEventListener('submit', e=>{
       e.preventDefault();
       const p = state.modal.payload;
       const nome=document.getElementById('p-nome').value.trim();
+      const codigoBarras=document.getElementById('p-codigo').value.trim();
       const preco=parseFloat(document.getElementById('p-preco').value);
       const custo=parseFloat(document.getElementById('p-custo').value)||0;
       const estoque=parseInt(document.getElementById('p-estoque').value,10);
       let produtos = DB.getProdutos();
+      if(codigoBarras && produtos.some(x=>x.codigoBarras===codigoBarras && x.id!==p.id)){
+        alert('Já existe outro produto cadastrado com esse código de barras.'); return;
+      }
       if(p.id){
-        produtos = produtos.map(x=>x.id===p.id?{...x, nome, preco, custo, estoque}:x);
+        produtos = produtos.map(x=>x.id===p.id?{...x, nome, codigoBarras, preco, custo, estoque}:x);
       }else{
-        produtos.push({id:uid(), nome, preco, custo, estoque});
+        produtos.push({id:uid(), nome, codigoBarras, preco, custo, estoque});
       }
       DB.setProdutos(produtos);
       state.modal=null; render();
@@ -926,18 +948,41 @@ function bindModal(){
     });
   }
   if(state.modal.type==='venda'){
-    document.getElementById('btn-add-item').addEventListener('click', ()=>{
-      const produtoId = document.getElementById('v-produto').value;
-      const qtd = parseInt(document.getElementById('v-qtd').value,10);
-      if(!produtoId || !qtd || qtd<1) return;
+    function adicionarItemAoCarrinho(produtoId, qtd){
       const produto = DB.getProdutos().find(p=>p.id===produtoId);
+      if(!produto) return false;
       const jaNoCart = state.vendaCart.filter(i=>i.produtoId===produtoId).reduce((s,i)=>s+i.qtd,0);
-      if(jaNoCart+qtd > produto.estoque){ alert('Quantidade maior que o estoque disponível.'); return; }
+      if(jaNoCart+qtd > produto.estoque){ alert('Quantidade maior que o estoque disponível.'); return false; }
       const existente = state.vendaCart.find(i=>i.produtoId===produtoId);
       if(existente){ existente.qtd += qtd; } else {
         state.vendaCart.push({produtoId, nome:produto.nome, precoUnit:produto.preco, custoUnit:produto.custo||0, qtd});
       }
+      return true;
+    }
+    document.getElementById('btn-add-item').addEventListener('click', ()=>{
+      const produtoId = document.getElementById('v-produto').value;
+      const qtd = parseInt(document.getElementById('v-qtd').value,10);
+      if(!produtoId || !qtd || qtd<1) return;
+      adicionarItemAoCarrinho(produtoId, qtd);
       render();
+    });
+    document.getElementById('v-barcode').addEventListener('keydown', e=>{
+      if(e.key!=='Enter') return;
+      e.preventDefault();
+      const codigo = e.target.value.trim();
+      if(!codigo) return;
+      const produto = DB.getProdutos().find(p=>p.codigoBarras && p.codigoBarras===codigo);
+      if(!produto){ alert('Nenhum produto encontrado com esse código de barras.'); e.target.value=''; return; }
+      adicionarItemAoCarrinho(produto.id, 1);
+      render();
+    });
+    document.getElementById('v-scan-btn').addEventListener('click', ()=>{
+      abrirScanner(codigo=>{
+        const produto = DB.getProdutos().find(p=>p.codigoBarras && p.codigoBarras===codigo);
+        if(!produto){ alert('Nenhum produto encontrado com esse código de barras.'); return; }
+        adicionarItemAoCarrinho(produto.id, 1);
+        render();
+      });
     });
     document.querySelectorAll('[data-remover]').forEach(b=>b.addEventListener('click', ()=>{
       state.vendaCart.splice(parseInt(b.dataset.remover,10),1); render();
@@ -980,6 +1025,57 @@ function bindModal(){
     document.getElementById('btn-fechar-recibo').addEventListener('click', ()=>{ state.modal=null; render(); });
     document.getElementById('btn-imprimir-recibo').addEventListener('click', ()=>window.print());
   }
+}
+
+/* ============ LEITOR DE CÓDIGO DE BARRAS (câmera) ============ */
+function abrirScanner(callback){
+  if(!('BarcodeDetector' in window)){
+    alert('Leitura por câmera não é suportada neste navegador/aparelho. Você ainda pode digitar o código manualmente, ou usar um leitor USB/Bluetooth (ele funciona digitando como um teclado).');
+    return;
+  }
+  const overlay = document.createElement('div');
+  overlay.className='overlay'; overlay.style.zIndex='80';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:380px; text-align:center;">
+      <h3>Aponte para o código de barras</h3>
+      <video id="scanner-video" style="width:100%; border-radius:8px; background:#000;" playsinline autoplay muted></video>
+      <div class="sub" style="margin-top:10px; color:var(--ink-soft); font-size:12.5px;">A leitura é automática.</div>
+      <div class="modal-actions"><button class="btn ghost" id="scanner-cancelar" type="button" style="width:100%;">Cancelar</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const video = overlay.querySelector('#scanner-video');
+  let stream, parado=false;
+  let detector;
+  try{
+    detector = new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']});
+  }catch(err){
+    detector = new window.BarcodeDetector();
+  }
+  function fechar(){
+    parado=true;
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    overlay.remove();
+  }
+  function finalizar(codigo){
+    fechar();
+    callback(codigo);
+  }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(s=>{
+    stream=s; video.srcObject=s;
+    const tick = async ()=>{
+      if(parado) return;
+      try{
+        const codes = await detector.detect(video);
+        if(codes.length>0 && codes[0].rawValue){ finalizar(codes[0].rawValue); return; }
+      }catch(err){}
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }).catch(()=>{
+    alert('Não foi possível acessar a câmera. Verifique as permissões do navegador para este site.');
+    fechar();
+  });
+  overlay.querySelector('#scanner-cancelar').addEventListener('click', fechar);
 }
 
 render();
